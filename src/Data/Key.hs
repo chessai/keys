@@ -45,8 +45,8 @@ module Data.Key (
 
   -- * FoldableWithKey1
   , FoldableWithKey1(..)
-  , traverseWithKey1_ -- :: (FoldableWithKey1 t, Apply f) => (Key t -> a -> f b) -> t a -> f ()
-  , forWithKey1_ -- :: (FoldableWithKey1 t, Apply f) => t a -> (Key t -> a -> f b) -> f ()
+  , traverseWithKey1_ -- :: (FoldableWithKey1 t, Semiapplicative f) => (Key t -> a -> f b) -> t a -> f ()
+  , forWithKey1_ -- :: (FoldableWithKey1 t, Semiapplicative f) => t a -> (Key t -> a -> f b) -> f ()
   , foldMapWithKeyDefault1 -- :: (FoldableWithKey1, Monoid m) => (Key t -> a -> m) -> t a -> m
 
   -- * TraversableWithKey
@@ -72,7 +72,7 @@ import Control.Monad.Trans.Reader
 import qualified Data.Array as Array
 import Data.Array (Array)
 import Data.Functor.Identity
-import Data.Functor.Bind
+import Data.Functor.Semimonad
 import Data.Functor.Compose
 import Data.Functor.Product
 import qualified Data.Functor.Sum as Functor
@@ -95,8 +95,8 @@ import qualified Data.List.NonEmpty as NonEmpty
 import Data.Maybe (fromJust, listToMaybe)
 import qualified Data.Monoid as Monoid
 import Data.Semigroup hiding (Product)
-import Data.Semigroup.Foldable
-import Data.Semigroup.Traversable
+import Data.Semigroup.Semifoldable
+import Data.Semigroup.Semitraversable
 import Data.Sequence (Seq, ViewL(EmptyL), viewl, (|>))
 import qualified Data.Sequence as Seq
 import Data.Tagged
@@ -256,11 +256,11 @@ instance Zip f => Zip (M1 i c f) where
 (<--) :: (b -> b') -> (a' -> a) -> ((a -> b) -> (a' -> b'))
 (h <-- f) g = h . g . f
 
--- | Apply a unary function within the 'Comp1' constructor.
+-- | Semiapplicative a unary function within the 'Comp1' constructor.
 inComp :: (g (f a) -> g' (f' a')) -> ((g :.: f) a -> (g' :.: f') a')
 inComp = Comp1 <-- unComp1
 
--- | Apply a binary function within the 'Comp1' constructor.
+-- | Semiapplicative a binary function within the 'Comp1' constructor.
 inComp2 :: (  g (f a)   -> g' (f' a')     -> g'' (f'' a''))
         -> ((g :.: f) a -> (g' :.: f') a' -> (g'' :.: f'') a'')
 inComp2 = inComp <-- unComp1
@@ -602,12 +602,12 @@ findWithKey p = Monoid.getFirst . foldMapWithKey (\k x -> Monoid.First (if p k x
 
 -- * FoldableWithKey1
 
-class (Foldable1 t, FoldableWithKey t) => FoldableWithKey1 t where
+class (Semifoldable t, FoldableWithKey t) => FoldableWithKey1 t where
   foldMapWithKey1 :: Semigroup m => (Key t -> a -> m) -> t a -> m
 
 -- TODO
---instance Foldable f => Foldable1 (Cofree f) where
---  foldMap1 f (a :< as) = appEndo (getDual . foldMap (Dual . diff . foldMap1 f)) (f a)
+--instance Foldable f => Semifoldable (Cofree f) where
+--  semifoldMap f (a :< as) = appEndo (getDual . foldMap (Dual . diff . semifoldMap f)) (f a)
 
 instance FoldableWithKey1 f => FoldableWithKey1 (Cofree f) where
   foldMapWithKey1 f (a :< as) = f Seq.empty a <> foldMapWithKey1 (foldMapWithKey1 . fmap f . flip (|>)) as
@@ -644,18 +644,18 @@ instance FoldableWithKey1 f => FoldableWithKey1 (Rec1 f) where
 
 newtype Act f a = Act { getAct :: f a }
 
-instance Apply f => Semigroup (Act f a) where
+instance Semiapplicative f => Semigroup (Act f a) where
   Act a <> Act b = Act (a .> b)
 
 instance Functor f => Functor (Act f) where
   fmap f (Act a) = Act (f <$> a)
   b <$ Act a = Act (b <$ a)
 
-traverseWithKey1_ :: (FoldableWithKey1 t, Apply f) => (Key t -> a -> f b) -> t a -> f ()
+traverseWithKey1_ :: (FoldableWithKey1 t, Semiapplicative f) => (Key t -> a -> f b) -> t a -> f ()
 traverseWithKey1_ f = (<$) () . getAct . foldMapWithKey1 (fmap Act . f)
 {-# INLINE traverseWithKey1_ #-}
 
-forWithKey1_ :: (FoldableWithKey1 t, Apply f) => t a -> (Key t -> a -> f b) -> f ()
+forWithKey1_ :: (FoldableWithKey1 t, Semiapplicative f) => t a -> (Key t -> a -> f b) -> f ()
 forWithKey1_ = flip traverseWithKey1_
 {-# INLINE forWithKey1_ #-}
 
@@ -775,8 +775,8 @@ foldMapWithKeyDefault f = getConst . traverseWithKey (fmap Const . f)
 {-# INLINE foldMapWithKeyDefault #-}
 
 -- * TraversableWithKey1
-class (Traversable1 t, FoldableWithKey1 t, TraversableWithKey t) => TraversableWithKey1 t where
-  traverseWithKey1 :: Apply f => (Key t -> a -> f b) -> t a -> f (t b)
+class (Semitraversable t, FoldableWithKey1 t, TraversableWithKey t) => TraversableWithKey1 t where
+  traverseWithKey1 :: Semiapplicative f => (Key t -> a -> f b) -> t a -> f (t b)
 
 instance TraversableWithKey1 (Tagged a) where
   traverseWithKey1 f (Tagged a) = Tagged <$> f () a
